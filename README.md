@@ -66,6 +66,8 @@ Google Cast ve DLNA her iki altyapıda da çalışır.
 
 Test edilen TV: **Samsung S90D** – Google Cast, DLNA ve (wpa_supplicant ile) Miracast çalışıyor.
 Miracast'te ilk saniyelerde TV küçük pencereden tam ekrana geçerken kısa bir duraklama olur; bu normaldir.
+Samsung, Wi-Fi Direct grubuna bazen zamanında katılamaz; YANSIT bu durumda bağlantıyı 4 kereye kadar
+kendisi yeniden dener, bu yüzden bağlanmak bazen 1-2 dakika sürebilir.
 
 ### Bilinen sınırlamalar
 
@@ -138,7 +140,8 @@ DLNA work with both.
 
 Tested TV: **Samsung S90D** – Google Cast, DLNA and (with wpa_supplicant) Miracast work.
 With Miracast, the TV briefly pauses during the first seconds while it switches from a small window to
-full screen; this is normal.
+full screen; this is normal. Samsung sometimes fails to join the Wi-Fi Direct group in time; YANSIT then
+retries the connection up to 4 times by itself, so connecting can occasionally take 1-2 minutes.
 
 ### Known limitations
 

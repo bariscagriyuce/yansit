@@ -31,6 +31,13 @@ ACTIVE_DEACTIVATED = 4
 
 FIND_SECONDS = 120
 
+# NetworkManager, TV'nin WPS eşleşmesinden sonra gruba 5 saniye içinde yeniden
+# katılmasını bekler; bazı TV'ler (ör. Samsung) bunu her seferinde başaramaz ve
+# başarısız bir denemeden hemen sonra birkaç saniye yanıt vermez. Bu yüzden bağlantı,
+# arada TV yeniden aranarak birkaç kez denenir.
+MAX_ATTEMPTS = 4
+RETRY_DELAY = 6
+
 # Bizi 7236 portunda RTSP sunan bir WFD kaynağı olarak tanıtan bilgi
 # alt öğesi (WFD Device Information, oturum kurulabilir, 200 Mbit/s)
 SOURCE_WFD_IES = bytes.fromhex("000006" "0090" "1c44" "00c8")
@@ -178,10 +185,13 @@ class NmSession:
         self.active = None
         self.sub = None
         self.wait_timer = None
+        self.retry_timer = None
+        self.attempt = 0
         # RTSP sunucusu, TV bağlanmaya çalışmadan önce dinlemede olmalı
         self.rtsp = WfdSource(capture, settings, on_status, on_error, on_ended)
 
     def start(self):
+        self.attempt += 1
         peer = self.discovery.peers.get(self.device.data, {})
         connection = {
             "connection": {
@@ -203,8 +213,9 @@ class NmSession:
         }
         options = {"persist": GLib.Variant("s", "volatile"),
                    "bind-activation": GLib.Variant("s", "dbus-client")}
-        self.on_status(_("{name}: TV ekranındaki bağlantı isteğini onaylayın…",
-                         name=self.device.name))
+        if self.attempt == 1:
+            self.on_status(_("{name}: TV ekranındaki bağlantı isteğini onaylayın…",
+                             name=self.device.name))
         self.discovery.call(
             NM_PATH, NM, "AddAndActivateConnection2",
             GLib.Variant("(a{sa{sv}}ooa{sv})",
@@ -218,8 +229,7 @@ class NmSession:
                                     GLib.Variant("(o)", (res.unpack()[1],)))
             return
         if err:
-            self.on_error(_("Wi-Fi Direct bağlantısı kurulamadı: {error}",
-                            error=err.message.split(":")[-1].strip()))
+            self._failed(err.message.split(":")[-1].strip())
             return
         self.active = res.unpack()[1]
         self.sub = self.discovery.bus.signal_subscribe(
@@ -235,11 +245,39 @@ class NmSession:
             self.wait_timer = GLib.timeout_add_seconds(25, self._rtsp_timeout)
         elif state == ACTIVE_DEACTIVATED:
             self.active = None
+            if self.sub:
+                self.discovery.bus.signal_unsubscribe(self.sub)
+                self.sub = None
+            if self.wait_timer:
+                GLib.source_remove(self.wait_timer)
+                self.wait_timer = None
             if self.rtsp.connected:
                 self.on_ended(_("TV bağlantıyı kapattı."))
             else:
-                self.on_error(_("Wi-Fi Direct bağlantısı kurulamadı: {error}",
-                                error=_("TV bağlantıyı reddetti ya da zaman aşımı oldu.")))
+                self._failed(_("TV bağlantıyı reddetti ya da zaman aşımı oldu."))
+
+    def _failed(self, reason):
+        if self.attempt < MAX_ATTEMPTS:
+            self.on_status(_("Bağlantı kurulamadı, tekrar deneniyor ({n}/{total})…",
+                             n=self.attempt + 1, total=MAX_ATTEMPTS))
+            self.retry_timer = GLib.timeout_add_seconds(RETRY_DELAY, self._retry)
+        else:
+            self.on_error(_("Wi-Fi Direct bağlantısı kurulamadı: {error}", error=reason))
+
+    def _retry(self):
+        self.retry_timer = None
+        if not self.stopped:
+            # Taramayı tazelemek TV'nin bir sonraki denemede yanıt vermesini kolaylaştırır
+            self.discovery.call(self.discovery.device, NM_P2P_DEVICE, "StartFind",
+                                GLib.Variant("(a{sv})", ({"timeout": GLib.Variant("i", 10)},)))
+            self.retry_timer = GLib.timeout_add_seconds(3, self._start_after_find)
+        return False
+
+    def _start_after_find(self):
+        self.retry_timer = None
+        if not self.stopped:
+            self.start()
+        return False
 
     def _rtsp_timeout(self):
         self.wait_timer = None
@@ -250,9 +288,10 @@ class NmSession:
 
     def stop(self):
         self.stopped = True
-        if self.wait_timer:
-            GLib.source_remove(self.wait_timer)
-            self.wait_timer = None
+        for timer in (self.wait_timer, self.retry_timer):
+            if timer:
+                GLib.source_remove(timer)
+        self.wait_timer = self.retry_timer = None
         if self.sub:
             self.discovery.bus.signal_unsubscribe(self.sub)
             self.sub = None

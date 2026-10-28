@@ -74,6 +74,8 @@ EN = {
     "çalıştırın ya da Google Cast / DLNA kullanın.":
         "Wi-Fi is running on iwd; for TVs such as Samsung run "
         "'bash tools/wifi-backend.sh wpa_supplicant' or use Google Cast / DLNA.",
+    "Bağlantı kurulamadı, tekrar deneniyor ({n}/{total})…":
+        "Connection failed, retrying ({n}/{total})…",
     "TV bağlantıyı reddetti ya da zaman aşımı oldu.":
         "the TV refused the connection or it timed out.",
     "Wi-Fi Direct bağlandı, TV'nin yayını istemesi bekleniyor…":
