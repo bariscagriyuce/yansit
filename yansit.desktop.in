@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=YANSIT
+GenericName=Ekran Yansıtma
+Comment=Ekranı Google TV, Samsung, LG ve Roku TV'lere kablosuz yansıt
+Exec=@EXEC@
+Icon=video-display
+Terminal=false
+Categories=AudioVideo;Video;Utility;
+Keywords=miracast;chromecast;cast;dlna;tv;mirror;yansıt;
