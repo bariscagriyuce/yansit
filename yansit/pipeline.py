@@ -7,6 +7,10 @@
 """
 
 import os
+import queue
+import socket
+import threading
+import time
 from dataclasses import dataclass
 
 import gi
@@ -43,7 +47,7 @@ def has(element):
 def missing_elements(kind):
     need = ["videoconvertscale", "videorate", "h264parse", "mpegtsmux", "queue"]
     if kind == "rtp":
-        need += ["rtpmp2tpay", "udpsink"]
+        need += ["rtpmp2tpay", "appsink"]
     elif kind == "hls":
         need += ["hlssink2", "splitmuxsink"]
     else:
@@ -51,23 +55,27 @@ def missing_elements(kind):
     return [e for e in need if not has(e)]
 
 
-def _encoder(s, profile):
-    gop = s.fps  # her saniye bir anahtar kare: düşük gecikme ve HLS için şart
+def _encoder(s, profile, gop_seconds=1, buffer_ms=0):
+    """gop_seconds: anahtar kare aralığı (HLS için 1 sn şart).
+    buffer_ms: kodlayıcı tamponu; küçük tampon tam karelerin boyut sıçramasını sınırlar."""
+    gop = s.fps * gop_seconds
     caps = f"video/x-h264,profile={profile}"
     for name in ("vah264lpenc", "vah264enc"):
         if has(name):
+            cpb = f" cpb-size={s.bitrate * buffer_ms // 1000}" if buffer_ms else ""
             return (f"{name} name=venc rate-control=cbr bitrate={s.bitrate} "
-                    f"key-int-max={gop} b-frames=0 ! {caps}")
+                    f"key-int-max={gop} b-frames=0{cpb} ! {caps}")
     if has("x264enc"):
+        vbv = f" vbv-buf-capacity={buffer_ms}" if buffer_ms else ""
         return (f"x264enc name=venc tune=zerolatency speed-preset=ultrafast "
-                f"bitrate={s.bitrate} key-int-max={gop} bframes=0 ! {caps}")
+                f"bitrate={s.bitrate} key-int-max={gop} bframes=0{vbv} ! {caps}")
     if has("openh264enc"):
         return (f"openh264enc name=venc bitrate={s.bitrate * 1000} "
                 f"gop-size={gop} ! {caps}")
     raise RuntimeError(_("H.264 kodlayıcı bulunamadı (gst-plugin-va veya gst-plugins-ugly kurun)."))
 
 
-def _video_branch(s, capture, profile):
+def _video_branch(s, capture, profile, **encoder):
     if TEST_SOURCE or capture is None:
         src = "videotestsrc is-live=true pattern=ball"
     else:
@@ -77,7 +85,7 @@ def _video_branch(s, capture, profile):
             f"! videoconvertscale n-threads=0 add-borders=true ! videorate "
             f"! video/x-raw,format=NV12,width={s.width},height={s.height},"
             f"framerate={s.fps}/1,pixel-aspect-ratio=1/1 "
-            f"! {_encoder(s, profile)} ! h264parse config-interval=-1")
+            f"! {_encoder(s, profile, **encoder)} ! h264parse config-interval=-1")
 
 
 def _audio_branch():
@@ -93,12 +101,64 @@ def _audio_branch():
             f"! {enc}{parse}")
 
 
+class PacedSender:
+    """RTP paketlerini UDP ile, sabit bir hızı aşmadan zamana yayarak gönderir.
+
+    GStreamer bir karenin tüm paketlerini aynı anda gönderir; Wi-Fi Direct
+    bağlantısında bu patlamalar TV'de paket kaybına ve donmaya yol açar.
+    """
+
+    BURST = 6  # beklemeden art arda gönderilebilecek paket sayısı
+
+    def __init__(self, host, port, bind_port, rate_bps):
+        self.dest = (host, port)
+        self.rate = rate_bps / 8  # bayt/sn
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(("0.0.0.0", bind_port))
+        self.packets = queue.Queue(maxsize=4000)
+        self.running = True
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def push(self, data):
+        try:
+            self.packets.put_nowait(data)
+        except queue.Full:
+            pass
+
+    def _run(self):
+        allowance = self.BURST * 1400
+        last = time.monotonic()
+        while self.running:
+            try:
+                data = self.packets.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            now = time.monotonic()
+            allowance = min(allowance + (now - last) * self.rate, self.BURST * 1400)
+            last = now
+            if allowance < len(data):
+                time.sleep((len(data) - allowance) / self.rate)
+                last = time.monotonic()
+                allowance = len(data)
+            allowance -= len(data)
+            try:
+                self.sock.sendto(data, self.dest)
+            except OSError:
+                pass
+
+    def close(self):
+        self.running = False
+        self.sock.close()
+
+
 class Streamer:
     def __init__(self, capture, settings, on_error):
         self.capture = capture
         self.settings = settings
         self.on_error = on_error
         self.pipeline = None
+        self.sender = None
 
     def _launch(self, desc):
         self.pipeline = Gst.parse_launch(desc)
@@ -115,25 +175,28 @@ class Streamer:
             print("GStreamer hatası:", err.message, dbg)
             self.on_error(_("Yayın hatası: {error}", error=err.message))
 
-    def _ts_desc(self, profile, audio, sink):
+    def _ts_desc(self, profile, audio, sink, **encoder):
         s = self.settings
-        desc = (f"{_video_branch(s, self.capture, profile)} ! queue ! mux.sink_{VIDEO_PID} "
+        desc = (f"{_video_branch(s, self.capture, profile, **encoder)} ! queue ! mux.sink_{VIDEO_PID} "
                 f"mpegtsmux name=mux alignment=7 ! {sink}")
         if audio:
             desc += f" {_audio_branch()} ! queue ! mux.sink_{AUDIO_PID}"
         return desc
 
     def start_rtp(self, host, port, bind_port, profile="constrained-baseline", audio=True):
+        # Wi-Fi Direct bağlantısında ani paket patlamaları kayba yol açar: tam kareleri
+        # küçük tut, seyrek gönder (TV gerektiğinde wfd_idr_request ile ister) ve
+        # gönderimi bit hızının iki katıyla sınırlayarak zamana yay.
+        self.sender = PacedSender(host, port, bind_port,
+                                  (self.settings.bitrate * 2 + 256) * 1000)
         self._launch(self._ts_desc(
             profile, audio,
-            f"rtpmp2tpay pt=33 mtu=1472 ! udpsink host={host} port={port} "
-            f"bind-port={bind_port} sync=false async=false"))
+            "rtpmp2tpay pt=33 mtu=1472 ! appsink name=out emit-signals=true sync=false "
+            "max-buffers=2000 drop=true",
+            gop_seconds=2, buffer_ms=500))
+        self._connect_appsink(self.sender.push)
 
-    def start_ts(self, on_data, profile="main"):
-        self._launch(self._ts_desc(
-            profile, self.settings.audio,
-            "appsink name=out emit-signals=true sync=false max-buffers=200 drop=true"))
-
+    def _connect_appsink(self, on_data):
         def on_sample(sink):
             sample = sink.emit("pull-sample")
             buf = sample.get_buffer()
@@ -144,6 +207,12 @@ class Streamer:
             return Gst.FlowReturn.OK
 
         self.pipeline.get_by_name("out").connect("new-sample", on_sample)
+
+    def start_ts(self, on_data, profile="main"):
+        self._launch(self._ts_desc(
+            profile, self.settings.audio,
+            "appsink name=out emit-signals=true sync=false max-buffers=200 drop=true"))
+        self._connect_appsink(on_data)
 
     def start_hls(self, directory):
         s = self.settings
@@ -166,6 +235,9 @@ class Streamer:
             self.pipeline.set_state(Gst.State.PAUSED if paused else Gst.State.PLAYING)
 
     def stop(self):
+        if self.sender:
+            self.sender.close()
+            self.sender = None
         if self.pipeline:
             self.pipeline.get_bus().remove_signal_watch()
             self.pipeline.set_state(Gst.State.NULL)

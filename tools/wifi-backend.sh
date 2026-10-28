@@ -51,12 +51,33 @@ migrate_iwd_passwords() {
     done
 }
 
+recreate_wifi_interfaces() {
+    # iwd kapanırken kendi oluşturduğu Wi-Fi arayüzünü siler; wpa_supplicant'ın
+    # yönetebilmesi için her Wi-Fi kartına yeniden bir istasyon arayüzü ekle
+    sleep 1
+    # iwd'den kalan P2P aygıtı, wpa_supplicant'ın kendi P2P aygıtını açmasını engeller
+    for wdev in $(iw dev | awk '/wdev/ {w=$2} /type P2P-device/ {print w}'); do
+        iw wdev "$wdev" del 2>/dev/null && echo "  eski P2P aygıtı kaldırıldı / removed stale P2P device: $wdev"
+    done
+    for phy in /sys/class/ieee80211/*; do
+        phy=$(basename "$phy")
+        if ! iw phy "$phy" info >/dev/null 2>&1; then
+            continue
+        fi
+        if ! iw dev | awk -v p="${phy#phy}" '/^phy#/ {cur=substr($1,5)} /type managed/ && cur==p {found=1} END {exit !found}'; then
+            name=wlan${phy#phy}
+            iw phy "$phy" interface add "$name" type managed && echo "  arayüz oluşturuldu / interface created: $name"
+        fi
+    done
+}
+
 apply_backend() {
     local backend=$1
     printf '[device]\nwifi.backend=%s\n' "$backend" > "$conf"
     if [ "$backend" = wpa_supplicant ]; then
         systemctl disable --now iwd 2>/dev/null || true
         systemctl enable wpa_supplicant 2>/dev/null || true
+        recreate_wifi_interfaces
     else
         systemctl disable --now wpa_supplicant 2>/dev/null || true
         systemctl enable --now iwd

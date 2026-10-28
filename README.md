@@ -50,6 +50,23 @@ Betik şunları yapar:
 Terminalden: `yansit` ya da proje klasöründe `python3 -m yansit`.
 Ortam değişkenleri: `YANSIT_LANG=en|tr` (dili zorla), `YANSIT_DEBUG=1` (HTTP günlüğü).
 
+### Miracast ve iwd (Samsung TV'ler için önemli)
+
+CachyOS'ta Wi-Fi varsayılan olarak **iwd** ile çalışır. Samsung gibi bazı TV'ler Wi-Fi Direct
+grubunun yönetimini bilgisayara bırakır; iwd bu durumda TV'ye IP adresi vermediği için bağlantı
+~20 saniye sonra düşer. Çözüm, NetworkManager'ı **wpa_supplicant** ile çalıştırmaktır:
+
+```bash
+bash tools/wifi-backend.sh wpa_supplicant   # geri almak için: bash tools/wifi-backend.sh iwd
+```
+
+Betik iwd'de kayıtlı Wi-Fi şifrelerini NetworkManager'a taşır ve 45 saniye içinde internet
+gelmezse otomatik olarak geri döner. YANSIT hangi altyapının çalıştığını kendisi algılar.
+Google Cast ve DLNA her iki altyapıda da çalışır.
+
+Test edilen TV: **Samsung S90D** – Google Cast, DLNA ve (wpa_supplicant ile) Miracast çalışıyor.
+Miracast'te ilk saniyelerde TV küçük pencereden tam ekrana geçerken kısa bir duraklama olur; bu normaldir.
+
 ### Bilinen sınırlamalar
 
 - HDCP korumalı içerik Miracast'te gösterilmez.
@@ -105,6 +122,24 @@ The script:
 From a terminal: `yansit`, or `python3 -m yansit` in the project folder.
 Environment variables: `YANSIT_LANG=en|tr` (force a language), `YANSIT_DEBUG=1` (HTTP log).
 
+### Miracast and iwd (important for Samsung TVs)
+
+On CachyOS, Wi-Fi runs on **iwd** by default. Some TVs, such as Samsung, leave Wi-Fi Direct group
+ownership to the computer; iwd then does not hand the TV an IP address and the connection drops after
+~20 seconds. The fix is to run NetworkManager on **wpa_supplicant**:
+
+```bash
+bash tools/wifi-backend.sh wpa_supplicant   # to revert: bash tools/wifi-backend.sh iwd
+```
+
+The script migrates Wi-Fi passwords stored in iwd to NetworkManager and rolls back automatically if
+there is no connectivity within 45 seconds. YANSIT detects which backend is running. Google Cast and
+DLNA work with both.
+
+Tested TV: **Samsung S90D** – Google Cast, DLNA and (with wpa_supplicant) Miracast work.
+With Miracast, the TV briefly pauses during the first seconds while it switches from a small window to
+full screen; this is normal.
+
 ### Known limitations
 
 - HDCP-protected content is not shown over Miracast.
@@ -120,8 +155,9 @@ Environment variables: `YANSIT_LANG=en|tr` (force a language), `YANSIT_DEBUG=1` 
   with a restore token.
 - **Encoding:** Intel VA hardware encoder (`vah264lpenc`), falling back to `x264enc`. Audio: monitor of the
   default output → AAC.
-- **Miracast:** on CachyOS, Wi-Fi is managed by **iwd**. YANSIT registers as a Wi-Fi Display source on iwd's
-  P2P D-Bus API, runs the WFD RTSP negotiation (M1–M7) after the connection, and sends MPEG-TS over RTP.
+- **Miracast:** the Wi-Fi Direct link is set up through NetworkManager's Wi-Fi P2P API (wpa_supplicant), or
+  through iwd's P2P D-Bus API as a fallback. YANSIT then runs the WFD RTSP negotiation (M1–M7) and sends
+  MPEG-TS over RTP, paced so that frames do not leave the radio in bursts.
 - **Google Cast:** HLS segments served over HTTP and played by the TV's default media receiver.
 - **DLNA:** live MPEG-TS over HTTP, started with UPnP AVTransport.
 
@@ -132,7 +168,9 @@ Environment variables: `YANSIT_LANG=en|tr` (force a language), `YANSIT_DEBUG=1` 
 | `yansit/capture.py` | Wayland screen capture (portal) |
 | `yansit/pipeline.py` | GStreamer encoding pipelines |
 | `yansit/cast.py` | Google Cast |
-| `yansit/miracast.py`, `yansit/wfd.py` | Miracast (iwd + WFD RTSP) |
+| `yansit/miracast_nm.py`, `yansit/miracast_iwd.py` | Miracast Wi-Fi Direct (NetworkManager / iwd) |
+| `yansit/wfd.py` | Miracast WFD RTSP session |
+| `tools/wifi-backend.sh` | Switch NetworkManager between wpa_supplicant and iwd |
 | `yansit/dlna.py`, `yansit/httpserver.py` | DLNA and the streaming server |
 
 ### Requirements / Gereksinimler

@@ -262,7 +262,7 @@ class WfdSource:
         _bit, w, h, fps, _level = self.mode
         s = self.settings
         s.width, s.height, s.fps = w, h, fps
-        s.bitrate = min(s.bitrate, 8000 if h >= 1080 else 5000)
+        s.bitrate = min(s.bitrate, 6000 if h >= 1080 else 4000)
         self.streamer = Streamer(self.capture, s, self.on_error)
         profile = "constrained-baseline" if self.profile_bit == 0x01 else "high"
         self.streamer.start_rtp(self.remote_ip, self.remote_rtp_port, self.local_rtp_port,
