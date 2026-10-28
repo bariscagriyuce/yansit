@@ -139,3 +139,8 @@ Environment variables: `YANSIT_LANG=en|tr` (force a language), `YANSIT_DEBUG=1` 
 
 Python 3, PySide6, PyGObject, GStreamer 1.22+ (base, good, bad, libav, va, pipewire),
 pychromecast, zeroconf, xdg-desktop-portal (KDE) and iwd for Miracast.
+
+## License / Lisans
+
+[MIT](LICENSE) – serbestçe kullanabilir, değiştirebilir ve dağıtabilirsiniz /
+free to use, modify and distribute.
