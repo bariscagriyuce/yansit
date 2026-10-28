@@ -18,6 +18,9 @@ if command -v ufw >/dev/null; then
         sudo ufw allow from "$net" to any port 50900 proto udp comment "YANSIT DLNA kesif"
         sudo ufw allow from "$net" to any port 5353 proto udp comment "YANSIT mDNS (Google Cast)"
     done
+    # Miracast'te bilgisayar grup sahibi olduğunda TV'ye IP dağıtılır (NetworkManager "shared")
+    sudo ufw allow proto udp from any port 68 to any port 67 comment "YANSIT Miracast DHCP"
+    sudo ufw allow from 10.42.0.0/16 to any port 53 comment "YANSIT Miracast DNS"
 fi
 
 echo "==> Menü kısayolu oluşturuluyor"

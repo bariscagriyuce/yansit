@@ -22,7 +22,7 @@ from .dlna import DlnaDiscovery, DlnaSession
 from .httpserver import StreamServer
 from . import i18n
 from .i18n import _
-from .miracast import MiracastDiscovery, MiracastSession
+from .miracast import create_discovery
 from .pipeline import Settings, missing_elements
 
 RESOLUTIONS = [("1080p (1920×1080)", 1920, 1080), ("720p (1280×720)", 1280, 720)]
@@ -118,7 +118,7 @@ class MainWindow(QWidget):
         self.discoveries = {}
         for kind, factory in (
                 ("cast", lambda: CastDiscovery(changed)),
-                ("miracast", lambda: MiracastDiscovery(changed, self.log)),
+                ("miracast", lambda: create_discovery(changed, self.log)),
                 ("dlna", lambda: DlnaDiscovery(changed))):
             try:
                 self.discoveries[kind] = factory()
@@ -234,9 +234,8 @@ class MainWindow(QWidget):
                     self.session = CastSession(dev, self.capture, settings, self.server,
                                                self.discoveries["cast"].zconf, status, error)
                 elif dev.kind == "miracast":
-                    self.session = MiracastSession(dev, self.capture, settings,
-                                                   self.discoveries["miracast"],
-                                                   status, error, ended)
+                    self.session = self.discoveries["miracast"].new_session(
+                        dev, self.capture, settings, status, error, ended)
                 else:
                     self.session = DlnaSession(dev, self.capture, settings, self.server,
                                                status, error)

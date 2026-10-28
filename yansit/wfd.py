@@ -5,6 +5,7 @@ portuna TCP ile bağlanır. Ardından M1-M7 mesajlarıyla yetenekler
 karşılaştırılır ve görüntü MPEG-TS/RTP olarak UDP üzerinden gönderilir.
 """
 
+import os
 import random
 import socket
 
@@ -14,6 +15,7 @@ from .i18n import _
 from .pipeline import Streamer
 
 RTSP_PORT = 7236
+DEBUG = bool(os.environ.get("YANSIT_DEBUG"))
 SESSION_TIMEOUT = 30
 METHODS = "org.wfa.wfd1.0, SETUP, TEARDOWN, PLAY, PAUSE, GET_PARAMETER, SET_PARAMETER"
 
@@ -140,6 +142,8 @@ class WfdSource:
         if len(rest) < length:
             return False
         body, self.rx = rest[:length], rest[length:]
+        if DEBUG:
+            print("RTSP <<", head.decode(errors="ignore").replace("\r\n", " | "), "|", body)
         first = lines[0].split(None, 2)
         if first[0].startswith("RTSP/"):
             self._on_response(int(first[1]), headers, body)
@@ -150,6 +154,8 @@ class WfdSource:
     # --- gönderme --------------------------------------------------------
 
     def _send(self, text):
+        if DEBUG:
+            print("RTSP >>", text.replace("\r\n", " | "))
         self.conn.sendall(text.encode())
 
     def _request(self, method, url, tag, params=None, require=False):

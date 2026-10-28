@@ -67,6 +67,8 @@ EN = {
     "{name}: TV ekranındaki bağlantı isteğini onaylayın…":
         "{name}: accept the connection request on the TV screen…",
     "Wi-Fi Direct bağlantısı kurulamadı: {error}": "Wi-Fi Direct connection failed: {error}",
+    "TV bağlantıyı reddetti ya da zaman aşımı oldu.":
+        "the TV refused the connection or it timed out.",
     "Wi-Fi Direct bağlandı, TV'nin yayını istemesi bekleniyor…":
         "Wi-Fi Direct connected, waiting for the TV to request the stream…",
     "TV bağlandı ama yayını başlatmadı. Güvenlik duvarında TCP {port} portunun açık "
