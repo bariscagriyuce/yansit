@@ -189,7 +189,11 @@ class IwdSession:
                 return
             if err:
                 msg = err.message.split(":")[-1].strip() or err.message
-                self.on_error(_("Wi-Fi Direct bağlantısı kurulamadı: {error}", error=msg))
+                # iwd, grup sahibi olduğunda TV'ye IP veremez (bkz. modül açıklaması)
+                self.on_error(_("Wi-Fi Direct bağlantısı kurulamadı: {error}", error=msg) + " "
+                              + _("Wi-Fi iwd ile çalışıyor; Samsung gibi TV'ler için "
+                                  "'bash tools/wifi-backend.sh wpa_supplicant' çalıştırın "
+                                  "ya da Google Cast / DLNA kullanın."))
                 return
             if not self.rtsp.connected:
                 self.on_status(_("Wi-Fi Direct bağlandı, TV'nin yayını istemesi bekleniyor…"))

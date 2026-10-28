@@ -70,6 +70,10 @@ EN = {
     "{name}: TV ekranındaki bağlantı isteğini onaylayın…":
         "{name}: accept the connection request on the TV screen…",
     "Wi-Fi Direct bağlantısı kurulamadı: {error}": "Wi-Fi Direct connection failed: {error}",
+    "Wi-Fi iwd ile çalışıyor; Samsung gibi TV'ler için 'bash tools/wifi-backend.sh wpa_supplicant' "
+    "çalıştırın ya da Google Cast / DLNA kullanın.":
+        "Wi-Fi is running on iwd; for TVs such as Samsung run "
+        "'bash tools/wifi-backend.sh wpa_supplicant' or use Google Cast / DLNA.",
     "TV bağlantıyı reddetti ya da zaman aşımı oldu.":
         "the TV refused the connection or it timed out.",
     "Wi-Fi Direct bağlandı, TV'nin yayını istemesi bekleniyor…":
