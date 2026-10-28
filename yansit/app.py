@@ -4,16 +4,18 @@ Qt bu sistemde GLib olay döngüsünü kullandığı için GStreamer, Gio D-Bus
 ve GLib zamanlayıcıları doğrudan aynı döngüde çalışır.
 """
 
+import errno
 import signal
 import sys
 import time
+import traceback
 
 from gi.repository import GLib
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
+    QListWidgetItem, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
 
 from .capture import ScreenCapture
 from .cast import CastDiscovery, CastSession
@@ -53,7 +55,7 @@ class MainWindow(QWidget):
         layout.addWidget(self.title)
 
         self.list = QListWidget()
-        self.list.itemDoubleClicked.connect(lambda _: self.toggle())
+        self.list.itemDoubleClicked.connect(lambda _item: self.toggle())
         self.list.currentItemChanged.connect(lambda *_args: self.update_buttons())
         layout.addWidget(self.list, 1)
 
@@ -215,7 +217,7 @@ class MainWindow(QWidget):
             self.start(self.list.currentItem().data(Qt.UserRole))
 
     def start(self, dev):
-        _, w, h = RESOLUTIONS[self.res.currentIndex()]
+        _label, w, h = RESOLUTIONS[self.res.currentIndex()]
         settings = Settings(width=w, height=h, bitrate=QUALITIES[self.quality.currentIndex()][1],
                             audio=self.audio.isChecked())
         self.session = "starting"
@@ -281,7 +283,20 @@ def main():
     tick = QTimer()
     tick.timeout.connect(lambda: None)
     tick.start(500)
-    win = MainWindow()
+    try:
+        win = MainWindow()
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        QMessageBox.warning(None, "YANSIT", _("YANSIT zaten açık. Açık olan pencereyi kullanın."))
+        return
+
+    def excepthook(kind, value, tb):
+        # Qt ve GLib geri çağrılarındaki hatalar aksi hâlde sessizce kaybolur
+        traceback.print_exception(kind, value, tb)
+        win.fail(_("Beklenmeyen hata: {error}", error=value))
+
+    sys.excepthook = excepthook
     win.show()
     app.aboutToQuit.connect(win.close)
     sys.exit(app.exec())

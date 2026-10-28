@@ -33,6 +33,9 @@ EN = {
         "No TV found. Make sure the TV is on and on the same network; for Miracast, "
         "turn on the TV's 'Screen Mirroring' mode.",
     "Yeniden taranıyor…": "Rescanning…",
+    "YANSIT zaten açık. Açık olan pencereyi kullanın.":
+        "YANSIT is already running. Use the open window.",
+    "Beklenmeyen hata: {error}": "Unexpected error: {error}",
     "Yansıtma durduruldu.": "Mirroring stopped.",
     "Paylaşılacak ekranı seçin…": "Choose the screen to share…",
     "{kind} bulma başlatılamadı: {error}": "Could not start {kind} discovery: {error}",
